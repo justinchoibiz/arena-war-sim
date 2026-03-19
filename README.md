@@ -269,9 +269,3 @@ Reproducible Simulation
 - ✅ M1 implemented
 - ✅ baseline validated
 - 🚧 ready for M2
-
-<<<<<<< HEAD
----
-=======
----
->>>>>>> b27f37e (Fix README.md notion style)
