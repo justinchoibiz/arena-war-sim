@@ -1,0 +1,36 @@
+# OS
+.DS_Store
+
+# Logs
+*.log
+
+# Env / secrets
+.env
+.env.*
+!.env.example
+
+# Node
+node_modules/
+ui/node_modules/
+
+# Build outputs
+dist/
+build/
+ui/dist/
+ui/build/
+
+# Vite / TS cache
+*.tsbuildinfo
+ui/node_modules/.tmp/
+
+# Test coverage
+coverage/
+
+# Python / misc
+__pycache__/
+.venv/
+venv/
+
+# IDE
+.vscode/
+.idea/

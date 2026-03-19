@@ -1,0 +1,73 @@
+{
+  "version": "0.1",
+  "name": "interval_barbarian",
+  "createdAt": "2026-03-03T11:40:00+09:00",
+  "settings": {
+    "dt": 0.1,
+    "seed": 7,
+    "targetingDefault": "NEAREST"
+  },
+  "units": [
+    {
+      "id": "uA1",
+      "name": "Barbarian_A1",
+      "team": "A",
+      "level": 11,
+      "position": { "x": 0, "y": 0 },
+      "targetingPolicy": "NEAREST",
+      "hp": 120,
+      "maxHp": 120,
+      "dps": 300,
+      "range": 1000000,
+      "attackIntervalSec": 0.5,
+      "cooldownRemaining": 0,
+      "targetId": null
+    },
+    {
+      "id": "uA2",
+      "name": "Barbarian_A2",
+      "team": "A",
+      "level": 11,
+      "position": { "x": 0, "y": 20 },
+      "targetingPolicy": "NEAREST",
+      "hp": 120,
+      "maxHp": 120,
+      "dps": 300,
+      "range": 1000000,
+      "attackIntervalSec": 0.5,
+      "cooldownRemaining": 0,
+      "targetId": null
+    },
+    {
+      "id": "uB1",
+      "name": "Dummy_B1",
+      "team": "B",
+      "level": 10,
+      "position": { "x": 80, "y": 0 },
+      "targetingPolicy": "NEAREST",
+      "hp": 180,
+      "maxHp": 180,
+      "dps": 1,
+      "range": 1000000,
+      "attackIntervalSec": 0.5,
+      "cooldownRemaining": 0,
+      "targetId": null
+    },
+    {
+      "id": "uB2",
+      "name": "Dummy_B2",
+      "team": "B",
+      "level": 10,
+      "position": { "x": 80, "y": 20 },
+      "targetingPolicy": "NEAREST",
+      "hp": 180,
+      "maxHp": 180,
+      "dps": 1,
+      "range": 1000000,
+      "attackIntervalSec": 0.5,
+      "cooldownRemaining": 0,
+      "targetId": null
+    }
+  ],
+  "inputEvents": []
+}

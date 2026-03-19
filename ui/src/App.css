@@ -1,0 +1,120 @@
+/* ui/src/App.css */
+.ws-app {
+  max-width: 1200px;
+  margin: 0 auto;
+  padding: 16px;
+}
+
+.ws-header {
+  margin-bottom: 12px;
+}
+
+.ws-title {
+  font-size: 18px;
+  font-weight: 700;
+}
+
+.ws-sub {
+  font-size: 12px;
+  opacity: 0.7;
+}
+
+.ws-grid {
+  display: grid;
+  grid-template-columns: 1fr 0.9fr 1.2fr;
+  gap: 12px;
+  align-items: start;
+}
+
+.ws-card {
+  border: 1px solid rgba(0,0,0,0.15);
+  border-radius: 8px;
+  padding: 12px;
+}
+
+.ws-card h2 {
+  margin: 0 0 8px 0;
+  font-size: 14px;
+}
+
+.ws-stack {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.ws-row {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  flex-wrap: wrap;
+}
+
+.ws-muted {
+  font-size: 12px;
+  opacity: 0.7;
+}
+
+.ws-pre {
+  white-space: pre-wrap;
+  word-break: break-word;
+  margin: 6px 0 0 0;
+}
+
+.ws-error {
+  margin-top: 10px;
+  border: 1px solid rgba(255,0,0,0.25);
+  background: rgba(255,0,0,0.06);
+  padding: 10px;
+  border-radius: 8px;
+}
+
+.ws-error-title {
+  font-weight: 700;
+  margin-bottom: 4px;
+}
+
+.ws-kv > div {
+  margin: 2px 0;
+}
+
+.ws-section-title {
+  font-weight: 700;
+  font-size: 13px;
+  margin-bottom: 6px;
+}
+
+.ws-targetbox {
+  border: 1px solid rgba(0,0,0,0.12);
+  border-radius: 8px;
+  padding: 8px;
+}
+
+.ws-unitlist {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.ws-unitrow {
+  display: grid;
+  grid-template-columns: 1fr 160px;
+  gap: 10px;
+  align-items: center;
+}
+
+.ws-unitname {
+  font-size: 13px;
+}
+
+.ws-hpbar {
+  height: 10px;
+  border: 1px solid rgba(0,0,0,0.18);
+  border-radius: 6px;
+  overflow: hidden;
+}
+
+.ws-hpfill {
+  height: 100%;
+  background: rgba(0,0,0,0.65);
+}

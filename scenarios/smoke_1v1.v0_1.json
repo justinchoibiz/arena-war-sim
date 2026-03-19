@@ -1,0 +1,43 @@
+{
+  "version": "0.1",
+  "name": "smoke_1v1",
+  "createdAt": "2026-03-03T11:40:00+09:00",
+  "settings": {
+    "dt": 0.2,
+    "seed": 42,
+    "targetingDefault": "NEAREST"
+  },
+  "units": [
+    {
+      "id": "uA1",
+      "name": "A1",
+      "team": "A",
+      "level": 1,
+      "position": { "x": 0, "y": 0 },
+      "targetingPolicy": "NEAREST",
+      "hp": 100,
+      "maxHp": 100,
+      "dps": 1000,
+      "range": 1000000,
+      "attackIntervalSec": 0.4,
+      "cooldownRemaining": 0,
+      "targetId": null
+    },
+    {
+      "id": "uB1",
+      "name": "B1",
+      "team": "B",
+      "level": 1,
+      "position": { "x": 50, "y": 0 },
+      "targetingPolicy": "NEAREST",
+      "hp": 100,
+      "maxHp": 100,
+      "dps": 1,
+      "range": 1000000,
+      "attackIntervalSec": 0.4,
+      "cooldownRemaining": 0,
+      "targetId": null
+    }
+  ],
+  "inputEvents": []
+}
