@@ -22,7 +22,8 @@ import type {
   SimResult,
   TickHashRecord,
   Unit,
-  SimTraceResult
+  SimTraceResult,
+  RunValidationResult,
 } from "./types";
 import {
   normalizeScheduledTick,
@@ -163,7 +164,7 @@ function applyScheduledInputsForTick(
   _units: readonly Unit[],
   _ctx: EngineContext
 ): void {
-  // Step 8 scope:
+  // Step 9 scope:
   // input normalization exists, but input mutation is still not enabled.
 }
 
@@ -249,7 +250,9 @@ function attackPhaseM2(
 } {
   const unitsSorted = sortUnitsById(units);
   const byId = new Map<string, Unit>();
-  for (const u of unitsSorted) byId.set(u.id, u);
+  for (const u of unitsSorted) {
+    byId.set(u.id, u);
+  }
 
   const pendingDamage = new Map<string, number>();
   let attacksThisTick = 0;
@@ -305,7 +308,9 @@ function applyDamagePhase(
   pendingDamage: ReadonlyMap<string, number>
 ): void {
   const byId = new Map<string, Unit>();
-  for (const u of units) byId.set(u.id, u);
+  for (const u of units) {
+    byId.set(u.id, u);
+  }
 
   const targetIdsAsc = Array.from(pendingDamage.keys()).sort((a, b) =>
     a.localeCompare(b)
@@ -337,7 +342,7 @@ function buildTickTraceRecord(
   };
 }
 
-// 한번에 Tick에 적용한 Units를 공격횟수, Hash와 함꼐 저장한다.
+// 한번에 Tick에 적용한 Units를 공격횟수, Hash와 함께 저장한다.
 function tickOnce(
   unitsIn: readonly Unit[],
   ctx: EngineContext,
@@ -496,7 +501,20 @@ export function simulate(scenario: Scenario): SimResult {
   return runSimulationInternal(scenario, { emitTrace: false }).result;
 }
 
-// Trace 있이 Scenario 실행
+// Trace 포함 전체 실행
 export function simulateWithTrace(scenario: Scenario): SimTraceResult {
   return runSimulationInternal(scenario, { emitTrace: true });
+}
+
+// Tick별 Hash 만 추출 → 개수, array, 마지막
+export function runValidation(scenario: Scenario): RunValidationResult {
+  const traced = simulateWithTrace(scenario);
+  const tickHashes = traced.trace.map((record) => record.stateHash);
+
+  return {
+    result: traced.result,
+    traceLength: traced.trace.length,
+    tickHashes,
+    finalStateHash: tickHashes.length > 0 ? tickHashes[tickHashes.length - 1] : null,
+  };
 }

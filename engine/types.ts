@@ -71,6 +71,14 @@ export interface SimTraceResult {
   trace: TickHashRecord[];
 }
 
+// M2 run validation surface: SimTraceResult 자세한 버전
+export interface RunValidationResult {
+  result: SimResult;
+  traceLength: number;
+  tickHashes: string[];
+  finalStateHash: string | null;
+}
+
 // 실행 중 바뀌는 엔진 문맥
 export interface EngineContext {
   tick: number;
@@ -79,7 +87,7 @@ export interface EngineContext {
   inputEvents: NormalizedInputEvent[];
 }
 
-// Unit은 optional field, rouding 안된 field 섰여 있음
+// Unit은 optional field, rouding 안된 field 섞여 있음
 export interface UnitStateSnapshot {
   id: string;
   team: Team;
