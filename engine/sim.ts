@@ -1,22 +1,17 @@
 // /engine/sim.ts
 /**
- * Tick Order (M2 shared executor skeleton)
+ * Tick Order (M2 shared executor)
  *
  * Shared deterministic tick structure:
  *
  * 1) Apply scheduled inputs for current tick
  * 2) Acquire / Update Targets
- * 3) Move                  (Step 5: no-op placeholder, M1 semantics preserved)
- * 4) Resolve Activation    (Step 5: no-op placeholder, M1 semantics preserved)
- * 5) Attack                (current M1 attack semantics)
+ * 3) Move
+ * 4) Resolve Activation
+ * 5) Attack
  * 6) Apply Pending Damage
  * 7) Resolve Deaths
  * 8) Emit optional tick trace
- *
- * Notes:
- * - M1 result semantics must remain unchanged in this step.
- * - Step/full-speed must eventually share this exact tick core.
- * - Engine code must only depend on scenario state + EngineContext + deterministic helpers.
  */
 
 import type {
@@ -173,10 +168,8 @@ function applyScheduledInputsForTick(
   _units: readonly Unit[],
   _ctx: EngineContext
 ): void {
-  // Step 5 policy:
-  // - input normalization is already part of EngineContext
-  // - actual input mutation is not enabled yet
-  // - this phase exists so step/full-speed can share one tick order later
+  // Step 7 scope:
+  // input normalization exists, but input mutation is still not enabled.
 }
 
 // Unit을 Team 별로 분리 한후에 가장 가까운 적의 TargetId 를 할당하는 함수
@@ -224,9 +217,31 @@ function movePhase(units: Unit[], ctx: EngineContext): void {
   }
 }
 
-function activationPhaseNoop(_units: Unit[], _ctx: EngineContext): void {
-  // Step 6 policy:
-  // activation is intentionally not enabled yet
+// target이 있고, 거리가 activationRange보다 작아야지 active 된다.
+function activationPhase(units: Unit[]): void {
+  const unitsSorted = sortUnitsById(units);
+  const byId = new Map<string, Unit>();
+  for (const u of unitsSorted) {
+    byId.set(u.id, u);
+  }
+
+  for (const unit of unitsSorted) {
+    const tid = unit.targetId;
+    if (!tid) {
+      unit.isActive = false;
+      continue;
+    }
+
+    const target = byId.get(tid);
+    if (!target || target.hp <= 0) {
+      unit.isActive = false;
+      continue;
+    }
+
+    const activationRange = unit.activationRange ?? 0;
+    const activationRangeSq = activationRange * activationRange;
+    unit.isActive = dist2(unit.position, target.position) <= activationRangeSq;
+  }
 }
 
 // 유닛 별로 쿨다운을 감소시키고, 쿨다운이 찬 유닛은 상대가 사정거리 내에 있을 때 pendingDamage에 추가한다.그리고 쿨다운은 초기화시킨다.
@@ -251,6 +266,7 @@ function attackPhaseM1(
     );
 
     if (attacker.cooldownRemaining > 0) continue;
+    if (attacker.isActive !== true) continue;
 
     const tid = attacker.targetId;
     if (!tid) continue;
@@ -329,7 +345,7 @@ function tickOnce(
   applyScheduledInputsForTick(units, ctx);
   acquireTargetsPhase(units);
   movePhase(units, ctx);
-  activationPhaseNoop(units, ctx);
+  activationPhase(units);
 
   const { pendingDamage, attacksThisTick } = attackPhaseM1(units, ctx);
   applyDamagePhase(units, pendingDamage);
@@ -389,6 +405,33 @@ function assertUniqueIds(units: readonly Unit[]): void {
   }
 }
 
+function positionsEqual(a: readonly Unit[], b: readonly Unit[]): boolean {
+  const aSorted = sortUnitsById(a);
+  const bSorted = sortUnitsById(b);
+
+  if (aSorted.length !== bSorted.length) return false;
+
+  for (let i = 0; i < aSorted.length; i++) {
+    if (aSorted[i].id !== bSorted[i].id) return false;
+    if (aSorted[i].position.x !== bSorted[i].position.x) return false;
+    if (aSorted[i].position.y !== bSorted[i].position.y) return false;
+  }
+
+  return true;
+}
+
+// 이전 Tick과 Position 동일 시 Stalemate
+function isStalemateTick(
+  beforeUnits: readonly Unit[],
+  afterUnits: readonly Unit[],
+  attacksThisTick: number
+): boolean {
+  if (attacksThisTick !== 0) return false;
+  if (!positionsEqual(beforeUnits, afterUnits)) return false;
+  if (afterUnits.some((u) => u.isActive === true)) return false;
+  return true;
+}
+
 // 시나리오로써 winner가 나올 때까지 Tick을 진행하면서 SimResult 계산
 function runSimulationInternal(
   scenario: Scenario,
@@ -408,17 +451,25 @@ function runSimulationInternal(
   while (winner === null) {
     tickCount++;
     ctx.tick = tickCount;
-
+  
+    const beforeTickUnits = deepCopyUnits(units);
     const tickResult = tickOnce(units, ctx, options);
     units = tickResult.units;
     attackCount += tickResult.attacksThisTick;
-
+  
     if (tickResult.traceRecord) {
       trace.push(tickResult.traceRecord);
     }
-
+  
     winner = computeWinner(units);
-
+  
+    if (
+      winner === null &&
+      isStalemateTick(beforeTickUnits, units, tickResult.attacksThisTick)
+    ) {
+      winner = "DRAW";
+    }
+  
     if (tickCount > MAX_TICKS) {
       throw new Error("Simulation timed out");
     }
