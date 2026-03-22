@@ -21,6 +21,7 @@
 
 import type {
   EngineContext,
+  MatchOutcome,
   NormalizedInputEvent,
   Scenario,
   SimResult,
@@ -34,6 +35,7 @@ import {
   roundHalfUp,
   dist2,
   pickNearestTargetId,
+  moveToward, 
 } from "./determinism";
 import {
   hashTickStateSnapshot,
@@ -133,7 +135,6 @@ function initUnit(u: Unit): Unit {
     cooldownRemaining: roundHalfUp(cooldownRemaining, 3),
     targetId,
 
-    // M2 state fields: keep normalized and explicit so snapshot/hash can work
     moveSpeed: roundHalfUp(u.moveSpeed ?? 0, 3),
     activationRange: roundHalfUp(u.activationRange ?? 0, 3),
     isActive: Boolean(u.isActive ?? false),
@@ -143,6 +144,7 @@ function initUnit(u: Unit): Unit {
   };
 }
 
+// 유닛들의 positoin까지 깊은 복사
 function deepCopyUnits(units: readonly Unit[]): Unit[] {
   return units.map((u) => ({
     ...u,
@@ -189,14 +191,42 @@ function acquireTargetsPhase(units: Unit[]): void {
   }
 }
 
-function movePhaseNoop(_units: Unit[], _ctx: EngineContext): void {
-  // Step 5 policy:
-  // preserve M1 behavior until movement is explicitly switched on in later step
+// Id 별 포지션 → 유닛별로 적을 향해 moveSpeed * dt 반큼 진행한다.
+function movePhase(units: Unit[], ctx: EngineContext): void {
+  const unitsSorted = sortUnitsById(units);
+
+  const startOfPhase = new Map<string, Unit>();
+  for (const u of unitsSorted) {
+    startOfPhase.set(u.id, {
+      ...u,
+      position: { x: u.position.x, y: u.position.y },
+    });
+  }
+
+  for (const unit of unitsSorted) {
+    const source = startOfPhase.get(unit.id)!;
+    const tid = source.targetId;
+    if (!tid) continue;
+
+    const target = startOfPhase.get(tid);
+    if (!target || target.hp <= 0) continue;
+
+    const moveSpeed = source.moveSpeed ?? 0;
+    const step = roundHalfUp(moveSpeed * ctx.dt, 3);
+    if (step <= 0) continue;
+
+    const moved = moveToward(source.position, target.position, step);
+
+    unit.position = {
+      x: moved.x,
+      y: moved.y,
+    };
+  }
 }
 
 function activationPhaseNoop(_units: Unit[], _ctx: EngineContext): void {
-  // Step 5 policy:
-  // preserve M1 behavior until activation is explicitly switched on in later step
+  // Step 6 policy:
+  // activation is intentionally not enabled yet
 }
 
 // 유닛 별로 쿨다운을 감소시키고, 쿨다운이 찬 유닛은 상대가 사정거리 내에 있을 때 pendingDamage에 추가한다.그리고 쿨다운은 초기화시킨다.
@@ -273,7 +303,6 @@ function resolveDeathsPhase(units: readonly Unit[]): Unit[] {
   return sortUnitsById(units.filter((u) => u.hp > 0));
 }
 
-
 // tick 별 units로 Hash화한다.
 function buildTickTraceRecord(
   tick: number,
@@ -299,7 +328,7 @@ function tickOnce(
 
   applyScheduledInputsForTick(units, ctx);
   acquireTargetsPhase(units);
-  movePhaseNoop(units, ctx);
+  movePhase(units, ctx);
   activationPhaseNoop(units, ctx);
 
   const { pendingDamage, attacksThisTick } = attackPhaseM1(units, ctx);
@@ -321,16 +350,21 @@ function tickOnce(
 // --------- (D) Simulation wrapper / result ---------
 
 // 남아있는 Team으로 승자를 정한다.
-function computeWinner(units: readonly Unit[]): Team | null {
+function computeWinner(units: readonly Unit[]): MatchOutcome | null {
   let hasA = false;
   let hasB = false;
+
   for (const u of units) {
     if (u.team === "A") hasA = true;
     else if (u.team === "B") hasB = true;
+
     if (hasA && hasB) return null;
   }
+
+  if (hasA && !hasB) return "A";
   if (!hasA && hasB) return "B";
-  if (!hasB && hasA) return "A";
+  if (!hasA && !hasB) return "DRAW";
+
   return null;
 }
 
@@ -345,8 +379,7 @@ function assertAttackIntervalContract(units: readonly Unit[], dt: number): void 
 }
 
 // Id 가 중복되는지 확인
-function assertUniqueIds(units: readonly Unit[]):
- void {
+function assertUniqueIds(units: readonly Unit[]): void {
   const seen = new Set<string>();
   for (const u of units) {
     if (seen.has(u.id)) {
@@ -369,7 +402,7 @@ function runSimulationInternal(
 
   let tickCount = 0;
   let attackCount = 0;
-  let winner: Team | null = computeWinner(units);
+  let winner: MatchOutcome | null = computeWinner(units);
   const trace: TickHashRecord[] = [];
 
   while (winner === null) {

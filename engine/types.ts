@@ -1,6 +1,7 @@
 interface Position { x: number; y: number; }
 
 export type Team = "A" | "B";
+export type MatchOutcome = Team | "DRAW";
 export type TargetingPolicy = "NEAREST";
 export type FixedDt = 0.1 | 0.2;
 export type ScenarioVersion = "0.1" | "0.2";
@@ -58,7 +59,7 @@ export interface Scenario {
 }
 
 export interface SimResult {
-  winnerTeam: Team;
+  winnerTeam: MatchOutcome;
   timeToFinishSec: number;
   survivorIds: string[];
   attackCount: number;
