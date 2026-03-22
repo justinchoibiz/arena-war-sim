@@ -7,6 +7,7 @@ export type FixedDt = 0.1 | 0.2;
 export type ScenarioVersion = "0.1" | "0.2";
 export type DamageFalloffMode = "NONE" | "INV_DISTANCE";
 
+// 유닛
 export interface Unit {
   id: string;
   name: string;
@@ -24,11 +25,6 @@ export interface Unit {
   cooldownRemaining: number;
   targetId: string | null;
 
-  /**
-   * M2 fields are introduced here as optional first so that
-   * Step 1 can widen the type surface without breaking current M1 callers.
-   * Step 2 (validation) will hard-require and validate them.
-   */
   moveSpeed?: number;
   activationRange?: number;
   isActive?: boolean;
@@ -37,18 +33,21 @@ export interface Unit {
   minDistance?: number;
 }
 
+// dt, seed 등 Simulation에 필요한 정적 설정
 export interface SimSettings {
   dt: FixedDt;
   seed: number;
   targetingDefault: TargetingPolicy;
 }
 
+// 어느 Tick에 들어올 어느 Event Input이 들어올건지
 export interface NormalizedInputEvent {
   scheduledAtTick: number;
   type: string;
   payload?: unknown;
 }
 
+// 세팅, Input, Units등 Simulation을 결정할 객체
 export interface Scenario {
   version: ScenarioVersion;
   name: string;
@@ -58,6 +57,7 @@ export interface Scenario {
   inputEvents?: unknown[];
 }
 
+// 승리팀, 얼마나 공격하는지 등 확인하고 싶은 결과.
 export interface SimResult {
   winnerTeam: MatchOutcome;
   timeToFinishSec: number;
@@ -65,6 +65,13 @@ export interface SimResult {
   attackCount: number;
 }
 
+// 결과 + Tick 별 State
+export interface SimTraceResult {
+  result: SimResult;
+  trace: TickHashRecord[];
+}
+
+// 실행 중 바뀌는 엔진 문맥
 export interface EngineContext {
   tick: number;
   dt: FixedDt;
@@ -72,6 +79,7 @@ export interface EngineContext {
   inputEvents: NormalizedInputEvent[];
 }
 
+// Unit은 optional field, rouding 안된 field 섰여 있음
 export interface UnitStateSnapshot {
   id: string;
   team: Team;
@@ -85,11 +93,13 @@ export interface UnitStateSnapshot {
   minDistance: number;
 }
 
+// 특정 Tick의 UnitSnapshots
 export interface TickStateSnapshot {
   tick: number;
   units: UnitStateSnapshot[];
 }
 
+// 특정 Tick의 UnitSnapshots를 Hash 화
 export interface TickHashRecord {
   tick: number;
   snapshot: TickStateSnapshot;

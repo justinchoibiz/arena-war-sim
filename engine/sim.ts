@@ -20,9 +20,9 @@ import type {
   NormalizedInputEvent,
   Scenario,
   SimResult,
-  Team,
   TickHashRecord,
   Unit,
+  SimTraceResult
 } from "./types";
 import {
   normalizeScheduledTick,
@@ -30,7 +30,9 @@ import {
   roundHalfUp,
   dist2,
   pickNearestTargetId,
-  moveToward, 
+  moveToward,
+  computeDistanceRounded,
+  computeEffectiveDamage,
 } from "./determinism";
 import {
   hashTickStateSnapshot,
@@ -39,22 +41,17 @@ import {
 
 const MAX_TICKS = 10000;
 
-export interface SimTraceResult {
-  result: SimResult;
-  trace: TickHashRecord[];
-}
-
+// Trace를 계산할건지
 interface TickExecutionOptions {
   emitTrace?: boolean;
 }
 
+// tickOnce를 한 후 SimTraceResult를 생성하기 위한 객체
 interface TickExecutionResult {
   units: Unit[];
   attacksThisTick: number;
   traceRecord?: TickHashRecord;
 }
-
-// --------- (A) Scenario normalization / init ---------
 
 function isBadNumber(x: unknown): boolean {
   return typeof x !== "number" || Number.isNaN(x) || !Number.isFinite(x);
@@ -152,7 +149,7 @@ function createInitialUnits(scenario: Scenario): Unit[] {
   return sortUnitsById(deepCopyUnits(scenario.units)).map(initUnit);
 }
 
-// 시나리오를 EngineContext 타입으로 변환하는 함수
+// 시나리오로 첫번째 tick의 EngineContext 타입을 생성하는 함수
 function createEngineContext(scenario: Scenario): EngineContext {
   return {
     tick: 0,
@@ -162,13 +159,11 @@ function createEngineContext(scenario: Scenario): EngineContext {
   };
 }
 
-// --------- (B) Shared tick phases ---------
-
 function applyScheduledInputsForTick(
   _units: readonly Unit[],
   _ctx: EngineContext
 ): void {
-  // Step 7 scope:
+  // Step 8 scope:
   // input normalization exists, but input mutation is still not enabled.
 }
 
@@ -245,7 +240,7 @@ function activationPhase(units: Unit[]): void {
 }
 
 // 유닛 별로 쿨다운을 감소시키고, 쿨다운이 찬 유닛은 상대가 사정거리 내에 있을 때 pendingDamage에 추가한다.그리고 쿨다운은 초기화시킨다.
-function attackPhaseM1(
+function attackPhaseM2(
   units: readonly Unit[],
   ctx: EngineContext
 ): {
@@ -278,14 +273,24 @@ function attackPhaseM1(
     const r2 = attacker.range * attacker.range;
     if (d2 > r2) continue;
 
-    const damage = roundHalfUp(attacker.dps * attacker.attackIntervalSec, 3);
-    if (damage <= 0) continue;
+    const baseDamage = roundHalfUp(attacker.dps * attacker.attackIntervalSec, 3);
+    if (baseDamage <= 0) continue;
+
+    const distance = computeDistanceRounded(attacker.position, target.position);
+    const effectiveDamage = computeEffectiveDamage(
+      baseDamage,
+      distance,
+      attacker.damageFalloff!,
+      attacker.k!,
+      attacker.minDistance!
+    );
+    if (effectiveDamage <= 0) continue;
 
     attacksThisTick++;
 
     pendingDamage.set(
       tid,
-      roundHalfUp((pendingDamage.get(tid) ?? 0) + damage, 3)
+      roundHalfUp((pendingDamage.get(tid) ?? 0) + effectiveDamage, 3)
     );
 
     attacker.cooldownRemaining = attacker.attackIntervalSec;
@@ -314,7 +319,7 @@ function applyDamagePhase(
   }
 }
 
-// hp가 남아있는 유닛을 반환시킨다.
+// hp가 남아있는 유닛을 반환한다.
 function resolveDeathsPhase(units: readonly Unit[]): Unit[] {
   return sortUnitsById(units.filter((u) => u.hp > 0));
 }
@@ -332,8 +337,6 @@ function buildTickTraceRecord(
   };
 }
 
-// --------- (C) Shared tick executor ---------
-
 // 한번에 Tick에 적용한 Units를 공격횟수, Hash와 함꼐 저장한다.
 function tickOnce(
   unitsIn: readonly Unit[],
@@ -347,7 +350,7 @@ function tickOnce(
   movePhase(units, ctx);
   activationPhase(units);
 
-  const { pendingDamage, attacksThisTick } = attackPhaseM1(units, ctx);
+  const { pendingDamage, attacksThisTick } = attackPhaseM2(units, ctx);
   applyDamagePhase(units, pendingDamage);
 
   const nextUnits = resolveDeathsPhase(units);
@@ -362,8 +365,6 @@ function tickOnce(
     traceRecord,
   };
 }
-
-// --------- (D) Simulation wrapper / result ---------
 
 // 남아있는 Team으로 승자를 정한다.
 function computeWinner(units: readonly Unit[]): MatchOutcome | null {
@@ -405,6 +406,7 @@ function assertUniqueIds(units: readonly Unit[]): void {
   }
 }
 
+// 모든 유닛의 포지션 일치 확인
 function positionsEqual(a: readonly Unit[], b: readonly Unit[]): boolean {
   const aSorted = sortUnitsById(a);
   const bSorted = sortUnitsById(b);
@@ -451,25 +453,25 @@ function runSimulationInternal(
   while (winner === null) {
     tickCount++;
     ctx.tick = tickCount;
-  
+
     const beforeTickUnits = deepCopyUnits(units);
     const tickResult = tickOnce(units, ctx, options);
     units = tickResult.units;
     attackCount += tickResult.attacksThisTick;
-  
+
     if (tickResult.traceRecord) {
       trace.push(tickResult.traceRecord);
     }
-  
+
     winner = computeWinner(units);
-  
+
     if (
       winner === null &&
       isStalemateTick(beforeTickUnits, units, tickResult.attacksThisTick)
     ) {
       winner = "DRAW";
     }
-  
+
     if (tickCount > MAX_TICKS) {
       throw new Error("Simulation timed out");
     }
