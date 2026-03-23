@@ -114,6 +114,11 @@ export interface TickHashRecord {
   stateHash: string;
 }
 
+export interface DivergenceTraceInput {
+  baseline: TickHashRecord[];
+  candidate: TickHashRecord[];
+}
+
 export interface DivergenceUnitDiff {
   id: string;
   before: Partial<{
