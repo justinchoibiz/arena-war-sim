@@ -1,0 +1,74 @@
+:root {
+  font-family: Inter, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  line-height: 1.5;
+  font-weight: 400;
+
+  --ws-bg: #0b0f14;
+  --ws-bg-bottom: #0d1219;
+  --ws-panel: rgba(18, 24, 34, 0.88);
+  --ws-border: rgba(255, 255, 255, 0.08);
+  --ws-text: rgba(255, 255, 255, 0.92);
+  --ws-text-soft: rgba(255, 255, 255, 0.66);
+  --ws-shadow-1: 0 18px 48px rgba(0, 0, 0, 0.28);
+
+  color: var(--ws-text);
+  color-scheme: dark;
+  font-synthesis: none;
+  text-rendering: optimizeLegibility;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body,
+#root {
+  min-width: 320px;
+  min-height: 100%;
+}
+
+html {
+  background-color: var(--ws-bg);
+  background-image:
+    radial-gradient(circle at top, rgba(56, 88, 150, 0.16), transparent 28%),
+    linear-gradient(180deg, var(--ws-bg) 0%, var(--ws-bg-bottom) 100%);
+  background-repeat: no-repeat;
+  background-attachment: fixed;
+}
+
+body {
+  margin: 0;
+  color: var(--ws-text);
+  background-color: transparent;
+  overscroll-behavior-y: none;
+}
+
+#root {
+  min-height: 100vh;
+}
+
+button,
+input,
+select,
+textarea {
+  font: inherit;
+}
+
+button {
+  cursor: pointer;
+}
+
+button:focus-visible,
+input:focus-visible,
+select:focus-visible {
+  outline: 2px solid rgba(180, 205, 255, 0.9);
+  outline-offset: 2px;
+}
+
+code,
+pre {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+}

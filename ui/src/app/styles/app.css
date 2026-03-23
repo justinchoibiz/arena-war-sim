@@ -1,0 +1,38 @@
+.ws-mono {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+}
+
+.ws-status-label {
+  font-size: 11px;
+  color: var(--ws-text-soft);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+
+.ws-status-value {
+  font-size: 14px;
+  font-weight: 650;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+@media (max-width: 1100px) {
+  .ws-responsive-status-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+  }
+
+  .ws-responsive-summary-grid,
+  .ws-responsive-replay-grid {
+    grid-template-columns: 1fr !important;
+  }
+}
+
+@media (max-width: 720px) {
+  .ws-responsive-status-grid,
+  .ws-responsive-metric-grid,
+  .ws-responsive-playback-controls {
+    grid-template-columns: 1fr !important;
+  }
+}
