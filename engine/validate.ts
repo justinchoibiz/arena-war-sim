@@ -187,6 +187,11 @@ function validateInputEvent(
 ): Record<string, unknown> {
   if (!isObject(event)) fail(`inputEvents[${idx}] must be object`);
 
+  const type = event["type"];
+  if (typeof type !== "string") {
+    fail(`inputEvents[${idx}].type must be string`);
+  }
+
   const hasScheduledAtTick = Object.prototype.hasOwnProperty.call(event, "scheduledAtTick");
   const hasTimeSec = Object.prototype.hasOwnProperty.call(event, "timeSec");
 

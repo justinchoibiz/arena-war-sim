@@ -43,6 +43,7 @@ export interface SimSettings {
 // 어느 Tick에 들어올 어느 Event Input이 들어올건지
 export interface NormalizedInputEvent {
   scheduledAtTick: number;
+  order: number;
   type: string;
   payload?: unknown;
 }
@@ -85,6 +86,21 @@ export interface EngineContext {
   dt: FixedDt;
   seed: number;
   inputEvents: NormalizedInputEvent[];
+}
+
+// step execution public surface
+export interface StepExecutionState {
+  ctx: EngineContext;
+  units: Unit[];
+  attackCount: number;
+  trace: TickHashRecord[];
+  winner: MatchOutcome | null;
+}
+
+export interface StepExecutionRunResult {
+  state: StepExecutionState;
+  traceRecord: TickHashRecord | null;
+  result: SimResult | null;
 }
 
 // Unit은 optional field, rouding 안된 field 섞여 있음

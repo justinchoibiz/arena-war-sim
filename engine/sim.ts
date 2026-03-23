@@ -4,14 +4,16 @@
  *
  * Shared deterministic tick structure:
  *
- * 1) Apply scheduled inputs for current tick
- * 2) Acquire / Update Targets
- * 3) Move
- * 4) Resolve Activation
- * 5) Attack
- * 6) Apply Pending Damage
- * 7) Resolve Deaths
- * 8) Emit optional tick trace
+ * runStep
+  └─ tickOnce
+       1) applyScheduledInputsForTick
+       2) acquireTargetsPhase
+       3) movePhase
+       4) activationPhase
+       5) attackPhaseM2
+       6) applyDamagePhase
+       7) resolveDeathsPhase
+       8) buildTickTraceRecord (optional)
  */
 
 import type {
@@ -24,6 +26,8 @@ import type {
   Unit,
   SimTraceResult,
   RunValidationResult,
+  StepExecutionState,
+  StepExecutionRunResult,
 } from "./types";
 import {
   normalizeScheduledTick,
@@ -65,36 +69,44 @@ function normalizeInputEvents(
   const raw = scenario.inputEvents ?? [];
   const dt = scenario.settings.dt;
 
-  return raw.map((event, idx) => {
-    if (typeof event !== "object" || event === null) {
-      throw new Error(`inputEvents[${idx}] must be object`);
-    }
-
-    const e = event as Record<string, unknown>;
-    const type = e["type"];
-    if (typeof type !== "string") {
-      throw new Error(`inputEvents[${idx}].type must be string`);
-    }
-
-    let scheduledAtTick: number;
-
-    if (typeof e["scheduledAtTick"] === "number") {
-      if (!Number.isInteger(e["scheduledAtTick"]) || e["scheduledAtTick"] < 0) {
-        throw new Error(`inputEvents[${idx}].scheduledAtTick must be integer >= 0`);
+  return raw
+    .map((event, idx) => {
+      if (typeof event !== "object" || event === null) {
+        throw new Error(`inputEvents[${idx}] must be object`);
       }
-      scheduledAtTick = e["scheduledAtTick"];
-    } else if (typeof e["timeSec"] === "number") {
-      scheduledAtTick = normalizeScheduledTick(e["timeSec"], dt);
-    } else {
-      throw new Error(`inputEvents[${idx}] must include scheduledAtTick or timeSec`);
-    }
 
-    return {
-      scheduledAtTick,
-      type,
-      payload: e["payload"],
-    };
-  });
+      const e = event as Record<string, unknown>;
+      const type = e["type"];
+      if (typeof type !== "string") {
+        throw new Error(`inputEvents[${idx}].type must be string`);
+      }
+
+      let scheduledAtTick: number;
+
+      if (typeof e["scheduledAtTick"] === "number") {
+        if (!Number.isInteger(e["scheduledAtTick"]) || e["scheduledAtTick"] < 0) {
+          throw new Error(`inputEvents[${idx}].scheduledAtTick must be integer >= 0`);
+        }
+        scheduledAtTick = e["scheduledAtTick"];
+      } else if (typeof e["timeSec"] === "number") {
+        scheduledAtTick = normalizeScheduledTick(e["timeSec"], dt);
+      } else {
+        throw new Error(`inputEvents[${idx}] must include scheduledAtTick or timeSec`);
+      }
+
+      return {
+        scheduledAtTick,
+        order: idx,
+        type,
+        payload: e["payload"],
+      };
+    })
+    .sort((a, b) => {
+      if (a.scheduledAtTick !== b.scheduledAtTick) {
+        return a.scheduledAtTick - b.scheduledAtTick;
+      }
+      return a.order - b.order;
+    });
 }
 
 // Unit 의 field 중 bad number 인 경우 디폴드 값으로 초기화하는 함수
@@ -145,6 +157,37 @@ function deepCopyUnits(units: readonly Unit[]): Unit[] {
   }));
 }
 
+// EngineContext 깊은 복사
+function deepCopyCtx(ctx: EngineContext): EngineContext {
+  return {
+    tick: ctx.tick,
+    dt: ctx.dt,
+    seed: ctx.seed,
+    inputEvents: ctx.inputEvents.map((e) => ({
+      scheduledAtTick: e.scheduledAtTick,
+      order: e.order,
+      type: e.type,
+      payload: e.payload,
+    })),
+  };
+}
+
+function deepCopyTrace(
+  trace: readonly TickHashRecord[]
+): TickHashRecord[] {
+  return trace.map((record) => ({
+    tick: record.tick,
+    stateHash: record.stateHash,
+    snapshot: {
+      tick: record.snapshot.tick,
+      units: record.snapshot.units.map((u) => ({
+        ...u,
+        position: { ...u.position },
+      })),
+    },
+  }));
+}
+
 // 시나리오의 units filed를 초기화하는 함수.
 function createInitialUnits(scenario: Scenario): Unit[] {
   return sortUnitsById(deepCopyUnits(scenario.units)).map(initUnit);
@@ -160,12 +203,138 @@ function createEngineContext(scenario: Scenario): EngineContext {
   };
 }
 
+// 특정 unit의 hp를 payload 값으로 강제 설정한다
+function applySetUnitHp(units: readonly Unit[], payload: unknown): void {
+  if (typeof payload !== "object" || payload === null) {
+    throw new Error("SET_UNIT_HP payload must be object");
+  }
+
+  const p = payload as Record<string, unknown>;
+  const unitId = p["unitId"];
+  const hp = p["hp"];
+
+  if (typeof unitId !== "string") {
+    throw new Error("SET_UNIT_HP payload.unitId must be string");
+  }
+  if (typeof hp !== "number" || !Number.isFinite(hp)) {
+    throw new Error("SET_UNIT_HP payload.hp must be finite number");
+  }
+
+  const unit = units.find((u) => u.id === unitId);
+  if (!unit) {
+    throw new Error(`SET_UNIT_HP target unit not found: ${unitId}`);
+  }
+
+  unit.hp = roundHalfUp(hp, 3);
+}
+
+// 특정 unit의 position(x, y)을 payload 값으로 강제 갱신한다 
+function applySetUnitPosition(units: readonly Unit[], payload: unknown): void {
+  if (typeof payload !== "object" || payload === null) {
+    throw new Error("SET_UNIT_POSITION payload must be object");
+  }
+
+  const p = payload as Record<string, unknown>;
+  const unitId = p["unitId"];
+  const x = p["x"];
+  const y = p["y"];
+
+  if (typeof unitId !== "string") {
+    throw new Error("SET_UNIT_POSITION payload.unitId must be string");
+  }
+  if (typeof x !== "number" || !Number.isFinite(x)) {
+    throw new Error("SET_UNIT_POSITION payload.x must be finite number");
+  }
+  if (typeof y !== "number" || !Number.isFinite(y)) {
+    throw new Error("SET_UNIT_POSITION payload.y must be finite number");
+  }
+
+  const unit = units.find((u) => u.id === unitId);
+  if (!unit) {
+    throw new Error(`SET_UNIT_POSITION target unit not found: ${unitId}`);
+  }
+
+  unit.position = {
+    x: roundHalfUp(x, 3),
+    y: roundHalfUp(y, 3),
+  };
+}
+
+// 특정 unit의 cooldownRemaining을 payload 값으로 덮어쓴다
+function applySetUnitCooldown(units: readonly Unit[], payload: unknown): void {
+  if (typeof payload !== "object" || payload === null) {
+    throw new Error("SET_UNIT_COOLDOWN payload must be object");
+  }
+
+  const p = payload as Record<string, unknown>;
+  const unitId = p["unitId"];
+  const cooldownRemaining = p["cooldownRemaining"];
+
+  if (typeof unitId !== "string") {
+    throw new Error("SET_UNIT_COOLDOWN payload.unitId must be string");
+  }
+  if (typeof cooldownRemaining !== "number" || !Number.isFinite(cooldownRemaining)) {
+    throw new Error("SET_UNIT_COOLDOWN payload.cooldownRemaining must be finite number");
+  }
+
+  const unit = units.find((u) => u.id === unitId);
+  if (!unit) {
+    throw new Error(`SET_UNIT_COOLDOWN target unit not found: ${unitId}`);
+  }
+
+  unit.cooldownRemaining = roundHalfUp(cooldownRemaining, 3);
+}
+
+// 특정 unit의 isActive 상태를 payload 값으로 직접 설정한다.
+function applySetUnitActive(units: readonly Unit[], payload: unknown): void {
+  if (typeof payload !== "object" || payload === null) {
+    throw new Error("SET_UNIT_ACTIVE payload must be object");
+  }
+
+  const p = payload as Record<string, unknown>;
+  const unitId = p["unitId"];
+  const isActive = p["isActive"];
+
+  if (typeof unitId !== "string") {
+    throw new Error("SET_UNIT_ACTIVE payload.unitId must be string");
+  }
+  if (typeof isActive !== "boolean") {
+    throw new Error("SET_UNIT_ACTIVE payload.isActive must be boolean");
+  }
+
+  const unit = units.find((u) => u.id === unitId);
+  if (!unit) {
+    throw new Error(`SET_UNIT_ACTIVE target unit not found: ${unitId}`);
+  }
+
+  unit.isActive = isActive;
+}
+
+// 현재 tick에 해당하는 scheduled input들을 실행 초기에 적용하여 unit state를 변형한다.
 function applyScheduledInputsForTick(
-  _units: readonly Unit[],
-  _ctx: EngineContext
+  units: readonly Unit[],
+  ctx: EngineContext
 ): void {
-  // Step 9 scope:
-  // input normalization exists, but input mutation is still not enabled.
+  const due = ctx.inputEvents.filter((e) => e.scheduledAtTick === ctx.tick);
+
+  for (const event of due) {
+    switch (event.type) {
+      case "SET_UNIT_HP":
+        applySetUnitHp(units, event.payload);
+        break;
+      case "SET_UNIT_POSITION":
+        applySetUnitPosition(units, event.payload);
+        break;
+      case "SET_UNIT_COOLDOWN":
+        applySetUnitCooldown(units, event.payload);
+        break;
+      case "SET_UNIT_ACTIVE":
+        applySetUnitActive(units, event.payload);
+        break;
+      default:
+        throw new Error(`Unsupported input event type: ${event.type}`);
+    }
+  }
 }
 
 // Unit을 Team 별로 분리 한후에 가장 가까운 적의 TargetId 를 할당하는 함수
@@ -439,60 +608,146 @@ function isStalemateTick(
   return true;
 }
 
-// 시나리오로써 winner가 나올 때까지 Tick을 진행하면서 SimResult 계산
-function runSimulationInternal(
-  scenario: Scenario,
-  options: TickExecutionOptions
-): SimTraceResult {
+// 최종 units 상태와 tick/attackCount를 기반으로 SimResult를 구성한다.
+function buildSimResult(
+  state: StepExecutionState
+): SimResult {
+  if (state.winner === null) {
+    throw new Error("buildSimResult requires terminal state");
+  }
+
+  return {
+    winnerTeam: state.winner,
+    timeToFinishSec: roundHalfUp(state.ctx.tick * state.ctx.dt, 3),
+    survivorIds: sortUnitsById(state.units).map((u) => u.id),
+    attackCount: state.attackCount,
+  };
+}
+
+// scenario로부터 step 실행용 초기 상태(ctx, units, trace 등)를 생성한다.
+export function createStepExecutionState(
+  scenario: Scenario
+): StepExecutionState {
   const ctx = createEngineContext(scenario);
-  let units = createInitialUnits(scenario);
+  const units = createInitialUnits(scenario);
 
   assertAttackIntervalContract(units, ctx.dt);
   assertUniqueIds(units);
 
-  let tickCount = 0;
-  let attackCount = 0;
-  let winner: MatchOutcome | null = computeWinner(units);
-  const trace: TickHashRecord[] = [];
+  return {
+    ctx,
+    units,
+    attackCount: 0,
+    trace: [],
+    winner: computeWinner(units),
+  };
+}
 
-  while (winner === null) {
-    tickCount++;
-    ctx.tick = tickCount;
+// 현재 state에서 정확히 1 tick만 advance 한다.
+function advanceOneTick(
+  state: StepExecutionState,
+  options: { emitTrace?: boolean } = {}
+): StepExecutionRunResult {
+  const stateUnits = deepCopyUnits(state.units);
+  const stateCtx = deepCopyCtx(state.ctx);
+  const stateTrace = deepCopyTrace(state.trace);
 
-    const beforeTickUnits = deepCopyUnits(units);
-    const tickResult = tickOnce(units, ctx, options);
-    units = tickResult.units;
-    attackCount += tickResult.attacksThisTick;
+  stateCtx.tick ++;
 
-    if (tickResult.traceRecord) {
-      trace.push(tickResult.traceRecord);
-    }
+  const beforeTickUnits = deepCopyUnits(stateUnits);
+  const tickResult = tickOnce(stateUnits, stateCtx, options);
 
-    winner = computeWinner(units);
+  let winner = computeWinner(tickResult.units);
 
-    if (
-      winner === null &&
-      isStalemateTick(beforeTickUnits, units, tickResult.attacksThisTick)
-    ) {
-      winner = "DRAW";
-    }
-
-    if (tickCount > MAX_TICKS) {
-      throw new Error("Simulation timed out");
-    }
+  if (
+    winner === null &&
+    isStalemateTick(beforeTickUnits, tickResult.units, tickResult.attacksThisTick)
+  ) {
+    winner = "DRAW";
   }
 
-  const timeToFinishSec = roundHalfUp(tickCount * ctx.dt, 3);
-  const survivorIds = sortUnitsById(units).map((u) => u.id);
+  if (stateCtx.tick > MAX_TICKS) {
+    throw new Error("Simulation timed out");
+  }
+
+  const nextTrace = tickResult.traceRecord
+    ? [...stateTrace, tickResult.traceRecord]
+    : stateTrace;
+
+  const nextState: StepExecutionState = {
+    ctx: stateCtx,
+    units: tickResult.units,
+    attackCount: state.attackCount + tickResult.attacksThisTick,
+    trace: nextTrace,
+    winner,
+  };
 
   return {
-    result: {
-      winnerTeam: winner,
-      timeToFinishSec,
-      survivorIds,
-      attackCount,
+    state: nextState,
+    traceRecord: tickResult.traceRecord ?? null,
+    result: winner === null ? null : buildSimResult(nextState),
+  };
+}
+
+// 이미 종료된 state를 runStep 결과 형태로 감싼다.
+function finalizeCompletedStepState(
+  state: StepExecutionState
+): StepExecutionRunResult {
+  const stateUnits = deepCopyUnits(state.units);
+  const stateCtx = deepCopyCtx(state.ctx);
+  const stateTrace = state.trace.map((record) => ({
+    tick: record.tick,
+    stateHash: record.stateHash,
+    snapshot: {
+      tick: record.snapshot.tick,
+      units: record.snapshot.units.map((u) => ({
+        ...u,
+        position: { ...u.position },
+      })),
     },
-    trace,
+  }));
+
+  const terminalState: StepExecutionState = {
+    ctx: stateCtx,
+    units: stateUnits,
+    attackCount: state.attackCount,
+    trace: stateTrace,
+    winner: state.winner,
+  };
+
+  return {
+    state: terminalState,
+    traceRecord: null,
+    result: buildSimResult(terminalState),
+  };
+}
+
+// 현재 state에서 정확히 1 tick을 실행하고 다음 state와 optional 결과를 반환한다.
+export function runStep(
+  state: StepExecutionState,
+  options: { emitTrace?: boolean } = {}
+): StepExecutionRunResult {
+  if (state.winner !== null) {
+    return finalizeCompletedStepState(state);
+  }
+
+  return advanceOneTick(state, options);
+}
+
+// runStep을 반복 호출하여 winner가 결정될 때까지 전체 시뮬레이션을 실행한다.
+function runSimulationInternal(
+  scenario: Scenario,
+  options: TickExecutionOptions
+): SimTraceResult {
+  let state = createStepExecutionState(scenario);
+
+  while (state.winner === null) {
+    state = runStep(state, { emitTrace: options.emitTrace }).state;
+  }
+
+  return {
+    result: buildSimResult(state),
+    trace: state.trace,
   };
 }
 
