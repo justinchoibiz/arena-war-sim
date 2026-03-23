@@ -114,11 +114,13 @@ export interface TickHashRecord {
   stateHash: string;
 }
 
+// 비교할 2개의 Trace 
 export interface DivergenceTraceInput {
   baseline: TickHashRecord[];
   candidate: TickHashRecord[];
 }
 
+// 특정 tick에서 baseline/ candidate 가 어떤 부분이 다른지.
 export interface DivergenceUnitDiff {
   id: string;
   before: Partial<{
@@ -137,6 +139,7 @@ export interface DivergenceUnitDiff {
   }>;
 }
 
+// 비교 결과
 export interface DivergenceResult {
   firstDivergenceTick: number | null;
   unitDiffs: DivergenceUnitDiff[];
