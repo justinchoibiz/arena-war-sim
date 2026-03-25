@@ -1,4 +1,4 @@
-import { useMemo, useState, type CSSProperties } from "react";
+import { useEffect, useMemo, useState, type CSSProperties } from "react";
 import { motion, AnimatePresence } from "motion/react";
 import * as Separator from "@radix-ui/react-separator";
 import {
@@ -8,11 +8,18 @@ import {
   FolderOpen,
   ShieldCheck,
   AlertCircle,
+  FlaskConical,
 } from "lucide-react";
 import type { Scenario } from "@engine/types";
 import { validateScenario } from "@engine/validate";
 
 const LS_KEY = "ws_scenario_v0_1";
+
+interface SampleScenarioItem {
+  id: string;
+  label: string;
+  path: string;
+}
 
 function summarizeIntervals(s: Scenario): string {
   const m = new Map<number, number>();
@@ -84,6 +91,18 @@ function plainButtonStyle(disabled: boolean): CSSProperties {
   };
 }
 
+const selectStyle: CSSProperties = {
+  minHeight: 40,
+  padding: "0 14px",
+  borderRadius: 999,
+  border: "1px solid rgba(255,255,255,0.10)",
+  background: "rgba(255,255,255,0.03)",
+  color: "var(--ws-text)",
+  fontSize: 13,
+  fontWeight: 650,
+  minWidth: 240,
+};
+
 export function ScenarioPanel(props: {
   scenario: Scenario | null;
   setScenario: (s: Scenario | null) => void;
@@ -92,6 +111,9 @@ export function ScenarioPanel(props: {
 }) {
   const { scenario, setScenario, error, setError } = props;
   const [busy, setBusy] = useState(false);
+  const [sampleBusy, setSampleBusy] = useState(false);
+  const [samples, setSamples] = useState<SampleScenarioItem[]>([]);
+  const [selectedSamplePath, setSelectedSamplePath] = useState("");
 
   const summary = useMemo(() => {
     if (!scenario) return null;
@@ -103,6 +125,38 @@ export function ScenarioPanel(props: {
       intervals: summarizeIntervals(scenario),
     };
   }, [scenario]);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    async function loadManifest() {
+      try {
+        const res = await fetch("/scenarios/manifest.json", { cache: "no-store" });
+        if (!res.ok) {
+          throw new Error(`Failed to load scenario manifest: ${res.status}`);
+        }
+
+        const data = (await res.json()) as SampleScenarioItem[];
+        if (!cancelled) {
+          setSamples(Array.isArray(data) ? data : []);
+          if (Array.isArray(data) && data.length > 0) {
+            setSelectedSamplePath(data[0].path);
+          }
+        }
+      } catch {
+        if (!cancelled) {
+          setSamples([]);
+          setSelectedSamplePath("");
+        }
+      }
+    }
+
+    loadManifest();
+
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   function setScenarioSafe(raw: unknown) {
     const validated = validateScenario(raw);
@@ -121,6 +175,24 @@ export function ScenarioPanel(props: {
       setError(String(e?.message ?? e));
     } finally {
       setBusy(false);
+    }
+  }
+
+  async function onLoadSample() {
+    if (!selectedSamplePath) return;
+    setSampleBusy(true);
+    try {
+      const res = await fetch(selectedSamplePath, { cache: "no-store" });
+      if (!res.ok) {
+        throw new Error(`Failed to load sample scenario: ${res.status}`);
+      }
+
+      const raw = await res.json();
+      setScenarioSafe(raw);
+    } catch (e: any) {
+      setError(String(e?.message ?? e));
+    } finally {
+      setSampleBusy(false);
     }
   }
 
@@ -181,7 +253,7 @@ export function ScenarioPanel(props: {
           Scenario Summary
         </div>
         <div style={{ fontSize: 12, color: "var(--ws-text-soft)" }}>
-          Import, persist, and validate before execution
+          Import, sample-load, persist, and validate before execution
         </div>
       </div>
 
@@ -205,20 +277,87 @@ export function ScenarioPanel(props: {
           />
         </label>
 
-        <button style={plainButtonStyle(!scenario || busy)} onClick={onExport} disabled={!scenario || busy}>
+        <button
+          style={plainButtonStyle(!scenario || busy)}
+          onClick={onExport}
+          disabled={!scenario || busy}
+        >
           <Download size={15} strokeWidth={2} />
           Export
         </button>
 
-        <button style={plainButtonStyle(!scenario || busy)} onClick={onSave} disabled={!scenario || busy}>
+        <button
+          style={plainButtonStyle(!scenario || busy)}
+          onClick={onSave}
+          disabled={!scenario || busy}
+        >
           <Save size={15} strokeWidth={2} />
           Save
         </button>
 
-        <button style={plainButtonStyle(busy)} onClick={onLoad} disabled={busy}>
+        <button
+          style={plainButtonStyle(busy)}
+          onClick={onLoad}
+          disabled={busy}
+        >
           <FolderOpen size={15} strokeWidth={2} />
           Load
         </button>
+      </div>
+
+      <div
+        style={{
+          ...summaryCardStyle,
+          gap: 10,
+          background: "rgba(255,255,255,0.018)",
+        }}
+      >
+        <div
+          style={{
+            display: "inline-flex",
+            alignItems: "center",
+            gap: 8,
+            fontSize: 11,
+            color: "var(--ws-text-soft)",
+            textTransform: "uppercase",
+            letterSpacing: "0.07em",
+          }}
+        >
+          <FlaskConical size={14} strokeWidth={2} />
+          Quick Sample Load
+        </div>
+
+        <div style={{ display: "flex", gap: 10, flexWrap: "wrap", alignItems: "center" }}>
+          <select
+            value={selectedSamplePath}
+            onChange={(e) => setSelectedSamplePath(e.target.value)}
+            disabled={sampleBusy || samples.length === 0}
+            style={selectStyle}
+          >
+            {samples.length === 0 ? (
+              <option value="">No sample manifest found</option>
+            ) : (
+              samples.map((sample) => (
+                <option key={sample.id} value={sample.path}>
+                  {sample.label}
+                </option>
+              ))
+            )}
+          </select>
+
+          <button
+            style={plainButtonStyle(sampleBusy || !selectedSamplePath)}
+            onClick={onLoadSample}
+            disabled={sampleBusy || !selectedSamplePath}
+          >
+            <FolderOpen size={15} strokeWidth={2} />
+            Load Sample
+          </button>
+        </div>
+
+        <div style={{ fontSize: 12, color: "var(--ws-text-soft)", lineHeight: 1.5 }}>
+          Public sample scenarios are served from <code className="ws-mono">/public/scenarios</code> so visitors can try the app immediately without preparing their own JSON first.
+        </div>
       </div>
 
       {!scenario ? (
@@ -233,7 +372,7 @@ export function ScenarioPanel(props: {
             lineHeight: 1.55,
           }}
         >
-          No scenario loaded. Import or load a JSON scenario. Validation always runs before the scenario enters the app state.
+          No scenario loaded. Import, load from local storage, or use a public sample scenario. Validation always runs before the scenario enters the app state.
         </div>
       ) : (
         <div style={summaryGridStyle} className="ws-responsive-metric-grid">
@@ -295,7 +434,7 @@ export function ScenarioPanel(props: {
               Validation Gate
             </div>
             <div style={{ fontSize: 14, fontWeight: 650, lineHeight: 1.55 }}>
-              Import and load paths always pass through <code className="ws-mono">validateScenario()</code>.
+              Import, local load, and sample load all pass through <code className="ws-mono">validateScenario()</code>.
             </div>
           </div>
         </div>
