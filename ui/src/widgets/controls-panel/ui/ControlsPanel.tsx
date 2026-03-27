@@ -154,9 +154,21 @@ export function Controls(props: {
       <Separator.Root decorative orientation="horizontal" style={separatorStyle} />
 
       <div style={buttonRowStyle}>
+
+      <motion.button
+          whileTap={props.isTraceDisabled ? undefined : { scale: 0.985 }}
+          style={actionButtonStyle("primary", props.isTraceDisabled)}
+          onClick={props.onRunWithTrace}
+          disabled={props.isTraceDisabled}
+        >
+          <ScanSearch size={16} strokeWidth={2} />
+          Run with Trace
+        </motion.button>
+
+
         <motion.button
           whileTap={props.isRunDisabled ? undefined : { scale: 0.985 }}
-          style={actionButtonStyle("primary", props.isRunDisabled)}
+          style={actionButtonStyle("secondary", props.isRunDisabled)}
           onClick={props.onRun}
           disabled={props.isRunDisabled}
         >
@@ -164,15 +176,7 @@ export function Controls(props: {
           Run
         </motion.button>
 
-        <motion.button
-          whileTap={props.isTraceDisabled ? undefined : { scale: 0.985 }}
-          style={actionButtonStyle("secondary", props.isTraceDisabled)}
-          onClick={props.onRunWithTrace}
-          disabled={props.isTraceDisabled}
-        >
-          <ScanSearch size={16} strokeWidth={2} />
-          Run with Trace
-        </motion.button>
+     
 
         <motion.button
           whileTap={props.isStepDisabled ? undefined : { scale: 0.985 }}
